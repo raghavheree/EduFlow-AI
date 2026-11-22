@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#1E3A8A" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="accentGrad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#93C5FD" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#grad512)" />
+  
+  <g transform="translate(256, 210)">
+    <polygon points="0,-96 165,-5 0,85 -165,-5" fill="#FFFFFF" fill-opacity="0.95" />
+    <path d="M-101,48 L-101,122 C-101,165 101,165 101,122 L101,48 C75,69 -75,69 -101,48 Z" fill="#FFFFFF" fill-opacity="0.88" />
+    <path d="M138,16 L138,112" stroke="url(#accentGrad512)" stroke-width="10" stroke-linecap="round" />
+    <circle cx="138" cy="122" r="11" fill="#93C5FD" />
+    <!-- AI Core Emblem -->
+    <circle cx="0" cy="-5" r="18" fill="#2563EB" />
+    <circle cx="0" cy="-5" r="8" fill="#FFFFFF" />
+  </g>
+  
+  <g transform="translate(256, 400)">
+    <circle cx="0" cy="0" r="10" fill="#93C5FD" opacity="0.95" />
+    <circle cx="-54" cy="16" r="8" fill="#BFDBFE" opacity="0.8" />
+    <circle cx="54" cy="16" r="8" fill="#BFDBFE" opacity="0.8" />
+    <line x1="-54" y1="16" x2="0" y2="0" stroke="#93C5FD" stroke-width="4" opacity="0.6" />
+    <line x1="54" y1="16" x2="0" y2="0" stroke="#93C5FD" stroke-width="4" opacity="0.6" />
+  </g>
+</svg>

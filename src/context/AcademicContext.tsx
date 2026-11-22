@@ -34,6 +34,11 @@ import {
 } from '../lib/gemini';
 import type { AIAnalysisResult, RAGAnswer } from '../lib/gemini';
 import { isSupabaseConfigured } from '../lib/supabase';
+import {
+  calculateConsecutiveClassesNeeded,
+  calculateAttendancePercentage,
+  isAttendanceShortage,
+} from '../lib/attendance';
 
 interface AcademicContextType {
   // Attendance
@@ -358,7 +363,7 @@ export const AcademicProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Add realistic baseline classes conducted if recent
       const baseConducted = Math.max(stats.conducted, id === 'sub-04' ? 25 : 30);
       const baseAttended = Math.max(stats.attended, id === 'sub-04' ? 18 : Math.floor(baseConducted * (id === 'sub-01' ? 0.93 : id === 'sub-02' ? 0.86 : 0.88)));
-      const pct = baseConducted > 0 ? parseFloat(((baseAttended / baseConducted) * 100).toFixed(1)) : 100;
+      const pct = calculateAttendancePercentage(baseConducted, baseAttended);
 
       return {
         subject_id: id,
@@ -368,14 +373,14 @@ export const AcademicProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         attended: baseAttended,
         cancelled: Math.max(stats.cancelled, 1),
         percentage: pct,
-        is_shortage: pct < 75.0,
+        is_shortage: isAttendanceShortage(pct),
       };
     });
 
     const totalConducted = baselineSubjects.reduce((acc, s) => acc + s.conducted, 0);
     const totalAttended = baselineSubjects.reduce((acc, s) => acc + s.attended, 0);
     const totalCancelled = baselineSubjects.reduce((acc, s) => acc + s.cancelled, 0);
-    const overallPercentage = totalConducted > 0 ? parseFloat(((totalAttended / totalConducted) * 100).toFixed(1)) : 100;
+    const overallPercentage = calculateAttendancePercentage(totalConducted, totalAttended);
 
     return {
       totalConducted,
@@ -384,20 +389,6 @@ export const AcademicProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       overallPercentage,
       subjects: baselineSubjects,
     };
-  };
-
-  /**
-   * Calculates the exact number of consecutive attended classes required to reach targetPercentage.
-   * Formula: (attended + X) / (conducted + X) >= target -> X >= (target * conducted - attended) / (1 - target)
-   */
-  const calculateConsecutiveClassesNeeded = (conducted: number, attended: number, targetPercentage: number): number => {
-    const target = targetPercentage / 100;
-    const current = conducted > 0 ? attended / conducted : 1;
-    if (current >= target) return 0;
-    if (target >= 1) return 999;
-
-    const needed = (target * conducted - attended) / (1 - target);
-    return Math.max(0, Math.ceil(needed));
   };
 
   // ==========================================

@@ -131,8 +131,8 @@ To connect live cloud services, copy `.env.example` to `.env`:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 
-# Google Gemini AI (Optional)
-VITE_GEMINI_API_KEY=your-gemini-api-key
+# Google Gemini AI (Server-Side Secret in Supabase Edge Functions)
+# supabase secrets set GEMINI_API_KEY=your-gemini-api-key
 
 # Resend Email API (Optional)
 VITE_RESEND_API_KEY=re_your_resend_api_key

@@ -34,6 +34,7 @@ export const AssignmentsView: React.FC = () => {
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'submitted'>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [roadmapModalOpen, setRoadmapModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submissionsModalOpen, setSubmissionsModalOpen] = useState(false);
@@ -119,6 +120,7 @@ export const AssignmentsView: React.FC = () => {
     });
 
     setSubmitModalOpen(false);
+    setSelectedAssignment(null);
     setSubmissionNotes('');
   };
 
@@ -277,6 +279,7 @@ export const AssignmentsView: React.FC = () => {
                     onClick={() => {
                       setSelectedAssignment(asg);
                       setAiTasksList(asg.ai_tasks || null);
+                      setRoadmapModalOpen(true);
                     }}
                     leftIcon={<Sparkles className="w-3.5 h-3.5 text-purple-600" />}
                   >
@@ -323,8 +326,11 @@ export const AssignmentsView: React.FC = () => {
 
       {/* AI Task Breakdown & Roadmap Modal */}
       <Modal
-        isOpen={Boolean(selectedAssignment && !submitModalOpen && !submissionsModalOpen)}
-        onClose={() => setSelectedAssignment(null)}
+        isOpen={roadmapModalOpen && Boolean(selectedAssignment)}
+        onClose={() => {
+          setRoadmapModalOpen(false);
+          setSelectedAssignment(null);
+        }}
         title={selectedAssignment?.title || 'Assignment Details'}
         description={`Course: ${selectedAssignment?.subject_code} • Instructor: ${selectedAssignment?.teacher_name}`}
       >
@@ -395,9 +401,12 @@ export const AssignmentsView: React.FC = () => {
 
       {/* Student Submit Work Modal */}
       <Modal
-        isOpen={submitModalOpen}
-        onClose={() => setSubmitModalOpen(false)}
-        title={`Submit Solution — ${selectedAssignment?.title}`}
+        isOpen={submitModalOpen && Boolean(selectedAssignment)}
+        onClose={() => {
+          setSubmitModalOpen(false);
+          setSelectedAssignment(null);
+        }}
+        title={`Submit Solution — ${selectedAssignment?.title || 'Assignment'}`}
         description="Attach your project report PDF or code repository URL for instructor review."
       >
         <div className="space-y-4 py-2 text-xs">
@@ -433,7 +442,14 @@ export const AssignmentsView: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setSubmitModalOpen(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSubmitModalOpen(false);
+                setSelectedAssignment(null);
+              }}
+            >
               Cancel
             </Button>
             <Button
@@ -450,9 +466,12 @@ export const AssignmentsView: React.FC = () => {
 
       {/* Teacher View Student Submissions Modal */}
       <Modal
-        isOpen={submissionsModalOpen}
-        onClose={() => setSubmissionsModalOpen(false)}
-        title={`Student Submissions — ${selectedAssignment?.title}`}
+        isOpen={submissionsModalOpen && Boolean(selectedAssignment)}
+        onClose={() => {
+          setSubmissionsModalOpen(false);
+          setSelectedAssignment(null);
+        }}
+        title={`Student Submissions — ${selectedAssignment?.title || 'Assignment'}`}
         description="Review student deliverables, inspect source repositories, and record rubric marks."
       >
         <div className="space-y-3 py-2 text-xs">
@@ -513,9 +532,12 @@ export const AssignmentsView: React.FC = () => {
 
       {/* Teacher Grading Modal */}
       <Modal
-        isOpen={gradingModalOpen}
-        onClose={() => setGradingModalOpen(false)}
-        title={`Grade Submission — ${activeSubmissionToGrade?.student_name}`}
+        isOpen={gradingModalOpen && Boolean(activeSubmissionToGrade)}
+        onClose={() => {
+          setGradingModalOpen(false);
+          setActiveSubmissionToGrade(null);
+        }}
+        title={`Grade Submission — ${activeSubmissionToGrade?.student_name || 'Student'}`}
         description="Enter marks and constructive academic feedback for student review."
       >
         <div className="space-y-4 py-2 text-xs">
@@ -544,7 +566,14 @@ export const AssignmentsView: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setGradingModalOpen(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setGradingModalOpen(false);
+                setActiveSubmissionToGrade(null);
+              }}
+            >
               Cancel
             </Button>
             <Button variant="primary" size="sm" onClick={handleSaveGrade}>

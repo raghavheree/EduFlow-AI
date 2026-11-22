@@ -32,7 +32,10 @@ export const Modal: React.FC<ModalProps> = ({
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      const remainingModals = document.querySelectorAll('[role="dialog"][data-modal-open="true"]');
+      if (remainingModals.length <= 1) {
+        document.body.style.overflow = 'unset';
+      }
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -47,17 +50,24 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      data-modal-open="true"
+    >
+      {/* Backdrop: Positioned behind modal content with backdrop blur */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"
         onClick={onClose}
+        aria-hidden="true"
       />
 
-      <div className="flex min-h-full items-center justify-center p-4 text-center">
+      {/* Centering Wrapper: relative z-10 ensures content is strictly above backdrop and remains sharp */}
+      <div className="relative z-10 flex min-h-full items-center justify-center p-4 text-center pointer-events-none">
         <div
           className={clsx(
-            'w-full transform overflow-hidden rounded-xl bg-white text-left align-middle shadow-xl transition-all border border-slate-200/80',
+            'relative pointer-events-auto w-full transform overflow-hidden rounded-xl bg-white text-left align-middle shadow-2xl transition-all border border-slate-200/80',
             maxWidthClasses[maxWidth]
           )}
           onClick={(e) => e.stopPropagation()}

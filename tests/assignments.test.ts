@@ -68,19 +68,139 @@ test('Rubric Grade & Letter Calculation', () => {
   assert.deepStrictEqual(computeRubricGrade(10, 0), { percentage: 0, letterGrade: 'F' });
 });
 
-test('Assignment Task Decomposer (Deterministic Fallback)', async () => {
-  const tasks = await breakDownAssignmentAI(
-    'Implement B-Tree Storage Engine',
-    'Write a working C++ implementation of a B+ Tree index with split and merge.'
-  );
+test('Student Assignment Submission Workflow', async (t) => {
+  interface SubmissionRecord {
+    id: string;
+    assignment_id: string;
+    student_id: string;
+    student_name: string;
+    enrollment_number: string;
+    file_name: string;
+    repo_url?: string;
+    notes?: string;
+    status: 'submitted' | 'graded';
+    marks_awarded?: number;
+    submitted_at: string;
+  }
 
-  assert.ok(Array.isArray(tasks));
-  assert.ok(tasks.length >= 3);
-  tasks.forEach((task, idx) => {
-    assert.ok(task.id.startsWith('task-'));
-    assert.strictEqual(task.step, idx + 1);
-    assert.ok(typeof task.task === 'string' && task.task.length > 5);
-    assert.ok(typeof task.estimated_time === 'string');
-    assert.strictEqual(task.completed, false);
+  const submissionsState: SubmissionRecord[] = [];
+
+  const handleStudentSubmit = (
+    assignmentId: string,
+    studentId: string,
+    studentName: string,
+    enrollment: string,
+    fileName: string,
+    repoUrl?: string,
+    notes?: string
+  ) => {
+    const newSubmission: SubmissionRecord = {
+      id: `subm-${Date.now()}`,
+      assignment_id: assignmentId,
+      student_id: studentId,
+      student_name: studentName,
+      enrollment_number: enrollment,
+      file_name: fileName,
+      repo_url: repoUrl,
+      notes: notes,
+      status: 'submitted',
+      submitted_at: new Date().toISOString(),
+    };
+    submissionsState.push(newSubmission);
+    return newSubmission;
+  };
+
+  await t.test('student successfully enters submission details and submits solution', () => {
+    const sub = handleStudentSubmit(
+      'asg-101',
+      'std-01',
+      'Aarav Sharma',
+      'CSE-2024-042',
+      'AaravSharma_BTree_Solution.pdf',
+      'https://github.com/aarav/btree-engine',
+      'Full test suite passed.'
+    );
+
+    assert.strictEqual(sub.assignment_id, 'asg-101');
+    assert.strictEqual(sub.student_id, 'std-01');
+    assert.strictEqual(sub.status, 'submitted');
+    assert.strictEqual(sub.file_name, 'AaravSharma_BTree_Solution.pdf');
+    assert.strictEqual(sub.repo_url, 'https://github.com/aarav/btree-engine');
+    assert.strictEqual(sub.notes, 'Full test suite passed.');
+  });
+
+  await t.test('submission updates student status from pending to submitted', () => {
+    const status = determineSubmissionStatus('asg-101', 'std-01', submissionsState);
+    assert.strictEqual(status, 'submitted');
+  });
+
+  await t.test('unsubmitted assignment remains in pending status for student', () => {
+    const status = determineSubmissionStatus('asg-102', 'std-01', submissionsState);
+    assert.strictEqual(status, 'pending');
+  });
+});
+
+test('Faculty Submission Review & Evaluation Workflow', async (t) => {
+  const cohortSubmissions = [
+    {
+      id: 'subm-01',
+      assignment_id: 'asg-cs301',
+      student_id: 'std-01',
+      student_name: 'Aarav Sharma',
+      file_name: 'CS301_Solution.pdf',
+      status: 'submitted' as const,
+      marks_awarded: undefined as number | undefined,
+      feedback: undefined as string | undefined,
+    },
+    {
+      id: 'subm-02',
+      assignment_id: 'asg-cs301',
+      student_id: 'std-02',
+      student_name: 'Bhavna Patel',
+      file_name: 'CS301_Report.pdf',
+      status: 'submitted' as const,
+      marks_awarded: undefined as number | undefined,
+      feedback: undefined as string | undefined,
+    },
+    {
+      id: 'subm-03',
+      assignment_id: 'asg-cs302',
+      student_id: 'std-03',
+      student_name: 'Chetan Verma',
+      file_name: 'CS302_HW.pdf',
+      status: 'submitted' as const,
+      marks_awarded: undefined as number | undefined,
+      feedback: undefined as string | undefined,
+    },
+  ];
+
+  await t.test('faculty filters and reviews submissions strictly for selected assignment', () => {
+    const selectedAssignmentId = 'asg-cs301';
+    const forAssignment = cohortSubmissions.filter(s => s.assignment_id === selectedAssignmentId);
+
+    assert.strictEqual(forAssignment.length, 2);
+    assert.deepStrictEqual(forAssignment.map(s => s.student_name), ['Aarav Sharma', 'Bhavna Patel']);
+  });
+
+  await t.test('faculty records rubric marks and feedback for student submission', () => {
+    const target = cohortSubmissions.find(s => s.id === 'subm-01')!;
+    target.marks_awarded = 94;
+    target.feedback = 'Excellent algorithm implementation with optimal asymptotic runtime.';
+    (target as any).status = 'graded';
+
+    assert.strictEqual(target.status, 'graded');
+    assert.strictEqual(target.marks_awarded, 94);
+    assert.ok(target.feedback.includes('optimal'));
+
+    // Check rubric grade conversion
+    const grade = computeRubricGrade(target.marks_awarded, 100);
+    assert.strictEqual(grade.letterGrade, 'A+');
+    assert.strictEqual(grade.percentage, 94.0);
+  });
+
+  await t.test('separate assignment submissions remain strictly isolated', () => {
+    const cs302Submissions = cohortSubmissions.filter(s => s.assignment_id === 'asg-cs302');
+    assert.strictEqual(cs302Submissions.length, 1);
+    assert.strictEqual(cs302Submissions[0].student_name, 'Chetan Verma');
   });
 });

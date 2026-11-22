@@ -1,11 +1,55 @@
 // EduFlow AI - Google Gemini API Client & Intelligent Document Processing Service
+// Security Architecture: Client code NEVER directly contacts Google's API or holds GEMINI_API_KEY.
+// All LLM operations are proxied through the server-side Supabase Edge Function 'ai-assistant'.
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+import { supabase, isSupabaseConfigured } from './supabase';
 
+/**
+ * Returns true if the server-side AI proxy is configured and reachable via Supabase Edge Functions.
+ */
 export const isGeminiConfigured = (): boolean => {
-  return Boolean(GEMINI_API_KEY && GEMINI_API_KEY.length > 10 && !GEMINI_API_KEY.includes('your-gemini-key'));
+  return isSupabaseConfigured() || Boolean(import.meta.env.VITE_AI_PROXY_URL);
 };
+
+/**
+ * Dispatches an AI request to the secure backend proxy (Supabase Edge Function 'ai-assistant').
+ * Never exposes the Google Gemini API key to client-side code or browser bundles.
+ */
+async function callSecureAIProxy<T>(action: string, payload: unknown): Promise<T | null> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-assistant', {
+        body: { action, payload },
+      });
+      if (!error && data) {
+        return data as T;
+      }
+      if (error) {
+        console.warn(`[EduFlow AI] Backend AI request (${action}) returned status:`, error.message);
+      }
+    } catch (err: any) {
+      console.warn(`[EduFlow AI] Backend AI function call (${action}) failed:`, err?.message || 'Network error');
+    }
+  }
+
+  const proxyUrl = import.meta.env.VITE_AI_PROXY_URL;
+  if (proxyUrl) {
+    try {
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload }),
+      });
+      if (res.ok) {
+        return (await res.json()) as T;
+      }
+    } catch (err: any) {
+      console.warn(`[EduFlow AI] Custom AI proxy (${action}) failed:`, err?.message || 'Network error');
+    }
+  }
+
+  return null;
+}
 
 export interface AIAnalysisResult {
   title: string;
@@ -28,56 +72,28 @@ export interface AIAnalysisResult {
 export async function analyzeNoticeDocument(text: string, fileName?: string): Promise<AIAnalysisResult> {
   if (isGeminiConfigured()) {
     try {
-      const prompt = `You are EduFlow AI's academic administrative assistant.
-Analyze this college notice/circular text carefully.
-Document Name: ${fileName || 'Uploaded notice'}
-Content:
-"""
-${text}
-"""
-
-Return a valid, strict JSON object (no markdown fences, just JSON) with this exact schema:
-{
-  "title": "Concise official notice title",
-  "category": "Exam" | "Assignment" | "Event" | "Holiday" | "Registration" | "General",
-  "targetDepartmentCode": "CSE" | "ECE" | "MECH" | "CIVIL" | "MGMT" | "ALL",
-  "targetDepartmentName": "Full department name or College-Wide",
-  "targetYear": number or null (e.g. 1, 2, 3, 4),
-  "targetSemester": number or null (e.g. 1-8),
-  "extractedDates": [
-    {"label": "Deadline / Date Description", "date": "YYYY-MM-DD or readable date string"}
-  ],
-  "actionItems": ["Action 1 required from student", "Action 2"],
-  "summary": "Clear, professional 2-3 sentence executive summary",
-  "confidence": 0.95
-}`;
-
-      const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-        }),
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidate) {
-          const parsed = JSON.parse(candidate);
-          return {
-            ...parsed,
-            engineUsed: 'Gemini 1.5 Flash (Live Cloud API)',
-          };
-        }
+      const data = await callSecureAIProxy<any>('analyze-notice', { text, fileName });
+      if (data && data.title && data.category) {
+        return {
+          title: data.title,
+          category: data.category,
+          targetDepartmentCode: data.targetDepartmentCode || 'ALL',
+          targetDepartmentName: data.targetDepartmentName || 'College-Wide',
+          targetYear: data.targetYear ?? undefined,
+          targetSemester: data.targetSemester ?? undefined,
+          extractedDates: Array.isArray(data.extractedDates) ? data.extractedDates : [],
+          actionItems: Array.isArray(data.actionItems) ? data.actionItems : [],
+          summary: data.summary || '',
+          confidence: data.confidence || 0.95,
+          engineUsed: 'Gemini 1.5 Flash (Live Cloud API)',
+        };
       }
     } catch (err) {
-      console.warn('[EduFlow AI] Gemini API call fell back to local extractor:', err);
+      console.warn('[EduFlow AI] Backend AI assistant call fell back to local extractor:', err);
     }
   }
 
-  // Robust, honest local Edge NLP extractor when Gemini API key is not configured or offline
+  // Robust, honest local Edge NLP extractor when Gemini backend is not configured or offline
   return parseNoticeLocally(text, fileName);
 }
 
@@ -193,40 +209,18 @@ function parseNoticeLocally(text: string, fileName?: string): AIAnalysisResult {
 export async function breakDownAssignmentAI(title: string, description: string) {
   if (isGeminiConfigured()) {
     try {
-      const prompt = `Break down this academic assignment into 3 to 4 sequential, actionable subtasks for a university student.
-Title: ${title}
-Description: ${description}
-
-Return a JSON array of objects:
-[
-  { "step": 1, "task": "Subtask title & instruction", "estimated_time": "2 hours" }
-]`;
-
-      const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidate) {
-          const parsed = JSON.parse(candidate);
-          return parsed.map((item: any, idx: number) => ({
-            id: `task-${idx + 1}`,
-            step: item.step || idx + 1,
-            task: item.task,
-            estimated_time: item.estimated_time || '2-3 hours',
-            completed: false,
-          }));
-        }
+      const data = await callSecureAIProxy<{ tasks: any[] }>('decompose-assignment', { title, description });
+      if (data && Array.isArray(data.tasks) && data.tasks.length > 0) {
+        return data.tasks.map((item: any, idx: number) => ({
+          id: `task-${idx + 1}`,
+          step: item.step || idx + 1,
+          task: item.task,
+          estimated_time: item.estimated_time || '2-3 hours',
+          completed: false,
+        }));
       }
     } catch (err) {
-      console.warn('[EduFlow AI] Gemini assignment breakdown error, using fallback:', err);
+      console.warn('[EduFlow AI] Backend AI assignment breakdown error, using fallback:', err);
     }
   }
 
@@ -330,40 +324,21 @@ export async function askStudyMaterialRAG(
 
   if (isGeminiConfigured()) {
     try {
-      const prompt = `You are EduFlow AI's academic study assistant. Answer the student's question using ONLY the retrieved lecture notes snippet below.
-Question: "${question}"
-Source Document: "${match.docTitle}" (Unit ${match.unit}, Page ${match.page})
-Text Snippet:
-"""
-${match.text}
-"""
-
-Provide a clear, pedagogical explanation with bullet points and a concrete example where appropriate. Conclude with an explicit citation: [Source: ${match.docTitle}, Page ${match.page}].`;
-
-      const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return {
-            answer: text,
-            citedDocument: match.docTitle,
-            unit: match.unit,
-            topic: match.topic,
-            pageNumber: match.page,
-            confidence: 0.96,
-            found: true,
-            engine: 'Gemini 1.5 Flash (Live Cloud API)',
-          };
-        }
+      const data = await callSecureAIProxy<{ answer: string }>('study-rag', { question, bestMatch: match });
+      if (data && data.answer) {
+        return {
+          answer: data.answer,
+          citedDocument: match.docTitle,
+          unit: match.unit,
+          topic: match.topic,
+          pageNumber: match.page,
+          confidence: 0.96,
+          found: true,
+          engine: 'Gemini 1.5 Flash (Live Cloud API)',
+        };
       }
     } catch (err) {
-      console.warn('[EduFlow AI] Gemini RAG synthesis error, using local formatter:', err);
+      console.warn('[EduFlow AI] Backend AI RAG synthesis error, using local formatter:', err);
     }
   }
 
@@ -394,68 +369,34 @@ export async function analyzeExamSyllabusAI(
 
   if (isGeminiConfigured()) {
     try {
-      const prompt = `Analyze this college syllabus for the subject "${subjectName}".
-The student has an exam in ${daysUntilExam} days and has ${availableHours} total study hours available (~${dailyHours} hrs/day).
-Syllabus:
-"""
-${syllabusText}
-"""
-
-Return a strict JSON object with:
-{
-  "priority_topics": [
-    {
-      "name": "Topic Name",
-      "priority": "high" | "medium" | "low",
-      "weightage_pct": number (e.g. 35),
-      "suggested_hours": number,
-      "justification": "Why this topic is prioritized based on foundational depth and exam patterns",
-      "important_subtopics": ["Subtopic 1", "Subtopic 2"],
-      "study_order": 1
-    }
-  ],
-  "study_phases": [
-    { "phase_name": "Phase 1: Foundations", "duration": "Days 1-4", "focus": "Master high-yield core concepts" }
-  ],
-  "revision_checklist": [
-    { "item": "Revise high-priority theorems and proofs", "checked": false }
-  ]
-}`;
-
-      const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
+      const parsed = await callSecureAIProxy<any>('analyze-exam-syllabus', {
+        subjectName,
+        syllabusText,
+        daysUntilExam,
+        availableHours,
+        dailyHours,
       });
 
-      if (response.ok) {
-        const json = await response.json();
-        const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidate) {
-          const parsed = JSON.parse(candidate);
-          return {
-            priority_topics: parsed.priority_topics.map((t: any, idx: number) => ({
-              ...t,
-              id: `topic-${idx + 1}`,
-              completed: false,
-            })),
-            study_phases: parsed.study_phases,
-            revision_checklist: parsed.revision_checklist.map((c: any, idx: number) => ({
-              id: `chk-${idx + 1}`,
-              item: c.item,
-              checked: false,
-            })),
-            dailyHours,
-            daysUntilExam,
-            ai_disclaimer: 'AI prioritization is generated by analyzing curriculum patterns and syllabus weightage. These are strategic study recommendations and not guaranteed exam questions.',
-          };
-        }
+      if (parsed && Array.isArray(parsed.priority_topics) && Array.isArray(parsed.study_phases)) {
+        return {
+          priority_topics: parsed.priority_topics.map((t: any, idx: number) => ({
+            ...t,
+            id: `topic-${idx + 1}`,
+            completed: false,
+          })),
+          study_phases: parsed.study_phases,
+          revision_checklist: (parsed.revision_checklist || []).map((c: any, idx: number) => ({
+            id: `chk-${idx + 1}`,
+            item: c.item,
+            checked: false,
+          })),
+          dailyHours,
+          daysUntilExam,
+          ai_disclaimer: 'AI prioritization is generated by analyzing curriculum patterns and syllabus weightage. These are strategic study recommendations and not guaranteed exam questions.',
+        };
       }
     } catch (err) {
-      console.warn('[EduFlow AI] Gemini exam evaluation error, using syllabus analyzer fallback:', err);
+      console.warn('[EduFlow AI] Backend AI exam evaluation error, using syllabus analyzer fallback:', err);
     }
   }
 
